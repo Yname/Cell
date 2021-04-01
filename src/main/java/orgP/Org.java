@@ -137,7 +137,7 @@ public class Org {
 
     //自定义的静态快，用来  执行每次从缓存队列里取出数据
      private void start() {
-        for (int m = 0; m < OUT_MAX_QUE/2; m++) {
+        for (int m = 0; m < OUT_MAX_QUE/3; m++) {
             System.out.println("开始了");
             ExecutorService service = buf.getService();
             service.execute(()->{
@@ -217,8 +217,9 @@ public class Org {
             jedis.sendCommand(Protocol.Command.HGETALL,key);
             binaryMultiBulkReply = jedis.getBinaryMultiBulkReply();
         }
-
-        return BuilderFactory.STRING_MAP.build(binaryMultiBulkReply);
+        Map<String, String> build = BuilderFactory.STRING_MAP.build(binaryMultiBulkReply);
+        build.put("header",new String(key));
+        return build;
 
 //        synchronized (jedis) {
 //            while (!type.equals("hash")){
@@ -236,8 +237,10 @@ public class Org {
         Map<byte[],byte[]> map = new HashMap<>();
         map.put("org".getBytes(),data.getOrg().getBytes());
         map.put("data".getBytes(),data.getData().getBytes());
-        int a = Integer.parseInt(data.getDataHeader()) | 1;
-        byte[] bytes = {(byte) a};
+
+        String key = String.valueOf(Integer.parseInt(data.getDataHeader()) | 1);
+
+        byte[] bytes = key.getBytes();
 
         synchronized (jedis){
             jedis.exists(bytes);

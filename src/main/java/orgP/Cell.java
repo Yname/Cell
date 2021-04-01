@@ -3,6 +3,7 @@ package orgP;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Cell implements ICell{
@@ -19,6 +20,8 @@ public class Cell implements ICell{
     static ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
     static ReentrantReadWriteLock.WriteLock writeLock = readWriteLock.writeLock();
 //    private static long[] core = new long[2];
+
+    final static AtomicInteger atomic = new AtomicInteger(1);
 
     private final static List<CellData> outSpace = new LinkedList<>();
     private final static List<CellData> inSpace = new LinkedList<>();
@@ -45,10 +48,13 @@ public class Cell implements ICell{
         this.iwork = iwork;
         this.lazyTime = lazyTime;
 
+
+        start();
+
         Work work = new Work(buf.getService(),this);
         this.work = work;
         work.analysisData(mark);
-//        start();
+
     }
 
     public void reStart() throws InterruptedException {
@@ -114,16 +120,49 @@ public class Cell implements ICell{
     protected void start(){
         ExecutorService service = buf.getService();
         service.execute(() -> {
-            Thread.currentThread().setName("Cell-start"+cellId);
+            Thread.currentThread().setName("Cell-start");
 
             while (true) {
-                CellData d = buf.getD(cellData);
+//                System.out.println("我是活的"+Thread.currentThread().getName());
 
                 if (inSpace.size() >= lazyTime) {
-                    inSpace.remove(0);
+                    buf.setData(inSpace.get(0));
                 }
-                outSpace.add(d);
+                CellData remove = null;
 
+                CellData d = buf.getD(cellData);
+                synchronized (outSpace) {
+                    if (outSpace.size() >= lazyTime){
+//                        for (int i = 0; i < outSpace.size(); i++) {
+//                            int j;
+//                            if (outSpace.get(i) != null) {
+//                                j = Integer.parseInt(outSpace.get(i).getDataHeader()) & 1;
+//                                CellData remove = outSpace.remove(i);
+//                                if (j == 0) {
+//                                    inSpace.add(remove);
+//                                }
+//                            }
+//                        }
+                        remove = outSpace.remove(0);
+                    }
+                    if(d != null)
+                        outSpace.add(d);
+//                    if (d != null)
+//                        outSpace.add(d);
+                }
+
+//                if (atomic.compareAndSet(1, 0)){
+//                    if (outSpace.size() >= lazyTime)
+//                        remove = outSpace.remove(0);
+//                    CellData d = buf.getD(cellData);
+//                    if(d != null)
+//                        outSpace.add(d);
+//                    atomic.incrementAndGet();
+//                }
+
+
+                if (remove != null && (Integer.parseInt(remove.getDataHeader()) & 1) == 0)
+                    inSpace.add(remove);
 
             }
 
@@ -177,8 +216,8 @@ public class Cell implements ICell{
 //                    }
 //                    cell.iwork.deal(buf,outSpace);
 //                }
-                buf.queueSet(cellData);
-                queueS(cellData);
+//                buf.queueSet(cellData);
+//                queueS(cellData);
 //
 ////                CellData d = buf.getD(cellData);
 ////                outSpace.add(d);
@@ -195,19 +234,18 @@ public class Cell implements ICell{
 //                        getCellData();
 //                    }
 
-
-                cell.iwork.deal(buf,outSpace);
-
-                for (int i = 0; i < outSpace.size(); i++) {
-                    int j;
-                    if (outSpace.get(i) != null) {
-                        j = Integer.parseInt(outSpace.get(i).getDataHeader()) & 1;
-                        CellData remove = outSpace.remove(i);
-                        if (j == 0) {
-                            buf.setData(remove);
-                        }
-                    }
+                synchronized (outSpace){
+                    if (outSpace.size() > 0)
+                        cell.iwork.deal(buf,outSpace);
                 }
+
+//                if (atomic.compareAndSet(1,0)){
+//                    if (outSpace.size() > 0)
+//                        cell.iwork.deal(buf,outSpace);
+//                    atomic.incrementAndGet();
+//                }
+
+
 
             }
         }
