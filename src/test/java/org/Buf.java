@@ -268,6 +268,7 @@ public final class Buf {
         map.put("org",data.getOrg());
         map.put("data",data.getData());
         jedis.hmset(data.getDataHeader(),map);
+//        jedis.exists()
     }
 
     public void deleteData(String header){

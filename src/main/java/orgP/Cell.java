@@ -3,6 +3,7 @@ package orgP;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Cell implements ICell{
 
@@ -11,13 +12,16 @@ public class Cell implements ICell{
     boolean mark = false;
     IWork iwork;
     Org buf = null;
-    static CellData cellData = null;
+    CellData cellData = null;
     int lazyTime = 50;
     Work work;
+    static ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    static ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
+    static ReentrantReadWriteLock.WriteLock writeLock = readWriteLock.writeLock();
 //    private static long[] core = new long[2];
 
-    private final static List<CellData> listSpace = new LinkedList<>();
-
+    private final static List<CellData> outSpace = new LinkedList<>();
+    private final static List<CellData> inSpace = new LinkedList<>();
 
     public Cell(boolean mark,Org buf,IWork work){
         this(null,AbtractCell.randomOrg(),mark,50,buf,work);
@@ -41,10 +45,10 @@ public class Cell implements ICell{
         this.iwork = iwork;
         this.lazyTime = lazyTime;
 
-        ExecutorService service = buf.getService();
-        Work work = new Work(service,this);
+        Work work = new Work(buf.getService(),this);
         this.work = work;
         work.analysisData(mark);
+//        start();
     }
 
     public void reStart() throws InterruptedException {
@@ -52,9 +56,10 @@ public class Cell implements ICell{
     }
 
 
+
     @Override
     public void getIntMsg(CellData obj) {
-          listSpace.add(obj);
+        outSpace.add(obj);
     }
 
     @Override
@@ -63,7 +68,7 @@ public class Cell implements ICell{
         if (cellData == null)
             return false;
         else
-            return listSpace.add(cellData);
+            return outSpace.add(cellData);
     }
 
     @Override
@@ -73,13 +78,13 @@ public class Cell implements ICell{
 
     @Override
     public CellData putOutMsg(int dataId) {
-        return listSpace.get(dataId);
+        return outSpace.get(dataId);
     }
 
     @Override
     public List<CellData> putOutMsg() {
 
-        return listSpace;
+        return outSpace;
     }
 
     public static String getCellId() {
@@ -102,8 +107,29 @@ public class Cell implements ICell{
         this.lazyTime = lazyTime;
     }
 
-    public static CellData getCellData() {
+    public  CellData getCellData() {
         return cellData;
+    }
+
+    protected void start(){
+        ExecutorService service = buf.getService();
+        service.execute(() -> {
+            Thread.currentThread().setName("Cell-start"+cellId);
+
+            while (true) {
+                CellData d = buf.getD(cellData);
+
+                if (inSpace.size() >= lazyTime) {
+                    inSpace.remove(0);
+                }
+                outSpace.add(d);
+
+
+            }
+
+        });
+
+        service.shutdown();
     }
 
     class Work {
@@ -118,7 +144,7 @@ public class Cell implements ICell{
 
             service.execute(() -> {
                 try {
-                    Thread.currentThread().setName("Cell-"+Thread.currentThread().getId());
+                    Thread.currentThread().setName("Cell-deal"+cellId);
                     dealData(mark);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -128,38 +154,72 @@ public class Cell implements ICell{
         }
 
         public void getCellData(){
-            CellData d = buf.getD(cellData);
-            if (listSpace.size() > lazyTime/2){
-                listSpace.remove(0);
-            }
-            if (d != null )
-                listSpace.add(d);
+//            if (outSpace.size() < lazyTime/2){
+//                CellData d = buf.getD(cellData);
+//                if( d != null ){
+//                    outSpace.add(d);
+//                }
+//            }else
+//                outSpace.remove(0);
+            outSpace.add(buf.getD(cellData));
         }
 
-        public int queueS(CellData cellData){
-            return buf.queueSet(cellData);
+        public void queueS(CellData cellData){
+            buf.queueSet(cellData);
         }
 
         public void dealData(boolean mark) throws InterruptedException {
             while (true){
-                for (int i = 0; i < cell.lazyTime/2; i++) {
-                    cell.iwork.deal(buf,listSpace);
-                    if (!mark) {
-                        queueS(cellData);
-                        getCellData();
+//                for (int i = 0; i < cell.lazyTime/2; i++) {
+//                    if (!mark) {
+
+
+//                    }
+//                    cell.iwork.deal(buf,outSpace);
+//                }
+                buf.queueSet(cellData);
+                queueS(cellData);
+//
+////                CellData d = buf.getD(cellData);
+////                outSpace.add(d);
+//                outSpace.add(buf.getD(cellData));
+//
+//                if (outSpace.size() > 0) {
+//                    cell.iwork.deal(buf, outSpace);
+//                }
+
+
+//                    cell.iwork.deal(buf,outSpace);
+//                    if (!mark) {
+//                        queueS(cellData);
+//                        getCellData();
+//                    }
+
+
+                cell.iwork.deal(buf,outSpace);
+
+                for (int i = 0; i < outSpace.size(); i++) {
+                    int j;
+                    if (outSpace.get(i) != null) {
+                        j = Integer.parseInt(outSpace.get(i).getDataHeader()) & 1;
+                        CellData remove = outSpace.remove(i);
+                        if (j == 0) {
+                            buf.setData(remove);
+                        }
                     }
                 }
+
             }
         }
 
         public int dealHead(boolean mark) {
-            if (Cell.listSpace.size() == 0){
+            if (Cell.outSpace.size() == 0){
                 if (!mark){
                     return 1;
                 }
                 else {
-                    int i = queueS(cellData);
-                    return -i;
+                    queueS(cellData);
+                    return 0;
                 }
             }
             return 0;

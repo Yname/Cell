@@ -1,6 +1,9 @@
 package orgP;
 
+import redis.clients.jedis.BinaryClient;
+import redis.clients.jedis.BuilderFactory;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Protocol;
 
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -9,7 +12,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Org {
 
-    private static final Jedis jedis = new Jedis("42.193.182.118",16379);
+    private static final BinaryClient jedis = new BinaryClient("42.193.182.118",16379);
+    private static final byte[][] EMPTY_ARGS = new byte[0][];
+
     final static AtomicInteger outLock = new AtomicInteger(1);
     final static AtomicInteger inLockIn = new AtomicInteger(1);
     final static AtomicInteger inLock = new AtomicInteger(1);
@@ -52,7 +57,7 @@ public class Org {
 
 
     //自定义缓存序列  用来存储每个线程的CellData对象，是用来临时传递值的，暂时未想到更好的解决方案
-    public int queueSet(CellData cellData)  {
+    public void queueSet(CellData cellData)  {
 
 //            System.out.println("欢迎"+Thread.currentThread().getName()+"大爷");
 
@@ -76,11 +81,9 @@ public class Org {
 //            }
         synchronized (buf.inputQueue) {
             if (inputQueue.size() >= MAX_QUE)
-                return 0;
+                return;
         }
-
-            inputQueue.add(cellData);
-            return 0;
+        inputQueue.add(cellData);
     }
 
 
@@ -129,7 +132,6 @@ public class Org {
                 }
             }
             return null;
-
     }
 
 
@@ -144,7 +146,10 @@ public class Org {
                     CellData data;
                     String header = null;
                     String org = null;
-                    data = buf.inputQueue.poll();
+                    synchronized (buf.inputQueue) {
+                        data = buf.inputQueue.poll();
+                    }
+
                     if (num.incrementAndGet() >= MAX_QUE*100000000){
                         num.compareAndSet( MAX_QUE*100000000,0);
                         synchronized (buf) {
@@ -175,56 +180,92 @@ public class Org {
     //实际的获取数据的方法   ，原因是因为jedis的链接不是阻塞的  多线程情况会导致 连接阻塞，多命令报错
     public CellData getData(String header) {
         Map<String, String> map = null;
-
+        System.out.println("getData");
         if (header == null || header.equals("")) {
             map = randomHashKey();
         } else {
-            synchronized (jedis) {
-                map = jedis.hgetAll(header);
+            List<byte[]> binaryMultiBulkReply;
+            synchronized (jedis){
+                jedis.sendCommand(Protocol.Command.HGETALL,header.getBytes());
+                binaryMultiBulkReply = jedis.getBinaryMultiBulkReply();
             }
+            map = BuilderFactory.STRING_MAP.build(binaryMultiBulkReply);
+
         }
-        return new CellData(header,map.get("org"),map.get("data"));
+        return new CellData(header == null ? map.get("header") : header,map.get("org"),map.get("data"));
     }
 
 
     private Map<String, String>  randomHashKey()  {
-        String type = "";
-        String key = null;
-        synchronized (jedis) {
-            while (!type.equals("hash")){
-                key = jedis.randomKey();
-                type = jedis.type(key);
+
+        byte[] hash = {104, 97, 115, 104};
+        byte[] key = {};
+        byte[] tempHash = {};
+
+        while (!(Arrays.equals(hash, tempHash))) {
+            synchronized (jedis) {
+                jedis.sendCommand(Protocol.Command.RANDOMKEY, new byte[0][]);
+                key = jedis.getBinaryBulkReply();
             }
-            return jedis.hgetAll(key);
+            synchronized (jedis){
+                jedis.sendCommand(Protocol.Command.TYPE, key);
+                tempHash = jedis.getBinaryBulkReply();
+            }
         }
+        List<byte[]> binaryMultiBulkReply;
+        synchronized (jedis){
+            jedis.sendCommand(Protocol.Command.HGETALL,key);
+            binaryMultiBulkReply = jedis.getBinaryMultiBulkReply();
+        }
+
+        return BuilderFactory.STRING_MAP.build(binaryMultiBulkReply);
+
+//        synchronized (jedis) {
+//            while (!type.equals("hash")){
+//                jedis.sendCommand(Protocol.Command.RANDOMKEY, EMPTY_ARGS);
+//                jedis.sendCommand(Protocol.Command.TYPE,jedis.getBinaryBulkReply());
+//                type = new String(jedis.getBinaryBulkReply());
+//            }
+//
+//            return jedis.hgetAll(key);
+//        }
+//        return null;
     }
 
     public void setData(CellData data){
-        Map<String,String> map = new HashMap<>();
-        map.put("org",data.getOrg());
-        map.put("data",data.getData());
-        synchronized (jedis) {
-            jedis.hmset(data.getDataHeader(), map);
+        Map<byte[],byte[]> map = new HashMap<>();
+        map.put("org".getBytes(),data.getOrg().getBytes());
+        map.put("data".getBytes(),data.getData().getBytes());
+        int a = Integer.parseInt(data.getDataHeader()) | 1;
+        byte[] bytes = {(byte) a};
+
+        synchronized (jedis){
+            jedis.exists(bytes);
+            Long integerReply = jedis.getIntegerReply();
+            if (integerReply == 1)
+                return;
+            jedis.hmset(bytes, map);
+            jedis.getStatusCodeReply();
         }
     }
 
 
 
-    public void deleteData(String header){
-        jedis.del(header);
-    }
+//    public void deleteData(String header){
+//        jedis.del(header);
+//    }
 
     public Queue<CellData> getQueue() {
         return inputQueue;
     }
 
-    public void deleteData(String header, String org){
-        deleteData(header, org,null);
-    }
+//    public void deleteData(String header, String org){
+//        deleteData(header, org,null);
+//    }
 
-    public void deleteData(String header,String org,String data){
-        jedis.hdel(header,org,data);
-    }
+//    public void deleteData(String header,String org,String data){
+//        jedis.hdel(header,org,data);
+//    }
 
 
     public String getOrgId() {
