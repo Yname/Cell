@@ -180,7 +180,6 @@ public class Org {
     //实际的获取数据的方法   ，原因是因为jedis的链接不是阻塞的  多线程情况会导致 连接阻塞，多命令报错
     public CellData getData(String header) {
         Map<String, String> map = null;
-        System.out.println("getData");
         if (header == null || header.equals("")) {
             map = randomHashKey();
         } else {

@@ -4,6 +4,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Cell implements ICell{
@@ -19,6 +20,8 @@ public class Cell implements ICell{
     static ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
     static ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
     static ReentrantReadWriteLock.WriteLock writeLock = readWriteLock.writeLock();
+    ReentrantLock reen = new ReentrantLock();
+
 //    private static long[] core = new long[2];
 
     final static AtomicInteger atomic = new AtomicInteger(1);
@@ -49,7 +52,7 @@ public class Cell implements ICell{
         this.lazyTime = lazyTime;
 
 
-        start();
+//        start();
 
         Work work = new Work(buf.getService(),this);
         this.work = work;
@@ -128,28 +131,49 @@ public class Cell implements ICell{
                 if (inSpace.size() >= lazyTime) {
                     buf.setData(inSpace.get(0));
                 }
-                CellData remove = null;
+//                CellData remove = null;
 
                 CellData d = buf.getD(cellData);
+
                 synchronized (outSpace) {
-                    if (outSpace.size() >= lazyTime){
-//                        for (int i = 0; i < outSpace.size(); i++) {
-//                            int j;
-//                            if (outSpace.get(i) != null) {
-//                                j = Integer.parseInt(outSpace.get(i).getDataHeader()) & 1;
-//                                CellData remove = outSpace.remove(i);
-//                                if (j == 0) {
-//                                    inSpace.add(remove);
-//                                }
-//                            }
-//                        }
-                        remove = outSpace.remove(0);
+                    if (outSpace.size() > lazyTime/4){
+                        for (int i = 0; i < outSpace.size(); i++) {
+                            int j;
+                            if (outSpace.get(i) != null) {
+                                j = Integer.parseInt(outSpace.get(i).getDataHeader()) & 1;
+                                CellData remove = outSpace.remove(i);
+                                if (j == 0) {
+                                    inSpace.add(remove);
+                                }
+                            }
+                        }
+
+//                        remove = outSpace.remove(0);
                     }
                     if(d != null)
                         outSpace.add(d);
 //                    if (d != null)
 //                        outSpace.add(d);
                 }
+
+//                readLock.lock();
+//                boolean size = outSpace.size() >= lazyTime;
+//                readLock.unlock();
+//
+//                writeLock.lock();
+//                if (size)
+//                    remove = outSpace.remove(0);
+//                if (d != null)
+//                    outSpace.add(d);
+//                writeLock.unlock();
+
+
+//                reen.lock();
+//                if (outSpace.size() >= lazyTime)
+//                    remove = outSpace.remove(0);
+//                if(d != null)
+//                    outSpace.add(d);
+//                reen.unlock();
 
 //                if (atomic.compareAndSet(1, 0)){
 //                    if (outSpace.size() >= lazyTime)
@@ -161,8 +185,8 @@ public class Cell implements ICell{
 //                }
 
 
-                if (remove != null && (Integer.parseInt(remove.getDataHeader()) & 1) == 0)
-                    inSpace.add(remove);
+//                if (remove != null && (Integer.parseInt(remove.getDataHeader()) & 1) == 0)
+//                    inSpace.add(remove);
 
             }
 
@@ -234,10 +258,53 @@ public class Cell implements ICell{
 //                        getCellData();
 //                    }
 
-                synchronized (outSpace){
-                    if (outSpace.size() > 0)
-                        cell.iwork.deal(buf,outSpace);
+
+
+                CellData d = buf.getD(cellData);
+                if(d != null)
+                    outSpace.add(d);
+
+                if (inSpace.size() >= lazyTime/2) {
+                    for (int i = 0; i < inSpace.size(); i++) {
+                        buf.setData(inSpace.get(i));
+                    }
                 }
+
+                if (outSpace.size() >= lazyTime/5) {
+
+                    cell.iwork.deal(buf, outSpace);
+
+                    for (int i = 0; i < outSpace.size(); i++) {
+                        int j;
+                        if (outSpace.get(i) != null) {
+                            j = Integer.parseInt(outSpace.get(i).getDataHeader()) & 1;
+                            CellData remove = outSpace.remove(i);
+                            if (j == 0) {
+                                inSpace.add(remove);
+                            }
+                        }
+                    }
+                }
+
+
+
+
+
+
+//                readLock.lock();
+//                boolean size = outSpace.size() > 0;
+//                readLock.unlock();
+//
+//                writeLock.lock();
+//                if (size)
+//                    cell.iwork.deal(buf,outSpace);
+//                writeLock.unlock();
+
+
+//                reen.lock();
+//                if (outSpace.size() > 0)
+//                    cell.iwork.deal(buf,outSpace);
+//                reen.unlock();
 
 //                if (atomic.compareAndSet(1,0)){
 //                    if (outSpace.size() > 0)
