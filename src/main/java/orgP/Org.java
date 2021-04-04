@@ -20,21 +20,22 @@ public class Org {
     final static AtomicInteger outLockIn = new AtomicInteger(1);
     final static AtomicInteger num = new AtomicInteger(0);
 
-    ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
-    ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
-    ReentrantReadWriteLock.WriteLock writeLock = readWriteLock.writeLock();
+    ReentrantReadWriteLock rwInLock = new ReentrantReadWriteLock();
+    ReentrantReadWriteLock.ReadLock rInLock = rwInLock.readLock();
+    ReentrantReadWriteLock.WriteLock wInLock = rwInLock.writeLock();
 
-
-    ReentrantReadWriteLock readWriteLockOut = new ReentrantReadWriteLock();
-    ReentrantReadWriteLock.ReadLock readLockOut = readWriteLock.readLock();
-    ReentrantReadWriteLock.WriteLock writeLockOut = readWriteLock.writeLock();
+    ReentrantReadWriteLock rwOutLock = new ReentrantReadWriteLock();
+    ReentrantReadWriteLock.ReadLock rOutLock = rwOutLock.readLock();
+    ReentrantReadWriteLock.WriteLock wOutLock = rwOutLock.writeLock();
 
     final Org buf;
     int MAX_QUE = 40;
     int OUT_MAX_QUE = 5;
     String orgId;
     final Queue<CellData> inputQueue = new LinkedList<>();
+    final Queue<CellData> inputQueue2 = new LinkedList<>();
     final List<CellData> outQueue = new LinkedList<>();
+
     public final NThread nthread = new NThread();
     public  ExecutorService getService(){
         return buf.nthread.getService();
@@ -63,39 +64,27 @@ public class Org {
     //自定义缓存序列  用来存储每个线程的CellData对象，是用来临时传递值的，暂时未想到更好的解决方案
     public void queueSet(CellData cellData)  {
 
-//            System.out.println("欢迎"+Thread.currentThread().getName()+"大爷");
 
-//            if (inLock.compareAndSet(1, 0)){
-//                int q = inputQueue.size();
-//                if ( q >= MAX_QUE){
-//                    inLock.incrementAndGet();
-//                    return 0;
-//                }
-//                inLock.incrementAndGet();
-//            }else {
-//                inLock.incrementAndGet();
-//                return 0;
-//            }
-
-
-//            synchronized (buf.inputQueue){
-//                if (inputQueue.size() >= MAX_QUE){
-//                    return 0;
-//                }
-//            }
-
-
-//        synchronized (buf.inputQueue) {
-//            if (inputQueue.size() >= MAX_QUE)
-//                return;
-//        }
-
-        synchronized (inputQueue) {
-            if (inputQueue.size() >= MAX_QUE) {
-                return;
-            }
+        rInLock.lock();
+        if (inLock.get() == 1 && inputQueue.size() <= MAX_QUE){
+            rInLock.unlock();
+            inputQueue.add(cellData);
         }
-        inputQueue.add(cellData);
+        else {
+            rInLock.unlock();
+            if (inLock.get() == 1){
+                wInLock.lock();
+                if (inLock.get() == 1) {
+                    inLock.decrementAndGet();
+                    System.out.println(inLock.get()+"=="+Thread.currentThread().getName());
+                }
+                wInLock.unlock();
+            }
+            if (inputQueue2.size() <= MAX_QUE && inLock.get() == 0) {
+                inputQueue2.add(cellData);
+            }
+
+        }
 
     }
 
@@ -109,6 +98,7 @@ public class Org {
             org = cellData.getOrg();
         }
         CellData cellData3 = null;
+
         synchronized (outQueue) {
             if (buf.outQueue.size() > 0) {
                 cellData3 = buf.outQueue.remove(0);
@@ -146,50 +136,50 @@ public class Org {
                     String header = null;
                     String org = null;
 
-                    synchronized (inputQueue) {
+                    rInLock.lock();
+                    if (inLock.get() == 0 && inputQueue.size() > 0) {
+                        rInLock.unlock();
+                        if (inputQueue.isEmpty())
+                            inputQueue.clear();
                         data = buf.inputQueue.poll();
+
+                    }else{
+                        rInLock.unlock();
+                        if (inputQueue2.size() > 0 ) {
+                            if (inLock.get() == 0) {
+                                wInLock.lock();
+                                if (inLock.get() == 0) {
+                                    inLock.incrementAndGet();
+                                    System.out.println(Thread.currentThread().getName() + "===" + inLock.get());
+                                }
+                                wInLock.unlock();
+                                continue;
+                            } else
+                                data = buf.inputQueue2.poll();
+                        }else
+                            continue;
+
                     }
-//                    synchronized (inputQueue) {
-//                        data = buf.inputQueue.poll();
+
+
+//                    if (num.incrementAndGet() >= MAX_QUE*100000000){
+//                        num.compareAndSet( MAX_QUE*100000000,0);
+//                        synchronized (buf) {
+//                            buf.notifyAll();
+//                        }
 //                    }
-
-//                    readLock.lock();
-//                    data = buf.inputQueue.poll();
-//                    readLock.unlock();
-
-                    if (num.incrementAndGet() >= MAX_QUE*100000000){
-                        num.compareAndSet( MAX_QUE*100000000,0);
-                        synchronized (buf) {
-                            buf.notifyAll();
-                        }
-                    }
-                    if (data != null) {
-                        header = data.getDataHeader();
-                        org = data.getOrg();
-                    }
-
-                    CellData data1 = buf.getData(header != null ? header : org);
-
-
-                    synchronized (outQueue){
-                        if (buf.outQueue.size() < OUT_MAX_QUE)
-                            buf.outQueue.add(data1);
-                    }
-
-//                    writeLockOut.lock();
-//                    if (buf.outQueue.size() < OUT_MAX_QUE)
-//                        buf.outQueue.add(data1);
-//                    writeLockOut.unlock();
-
-
-//                    if (outLockIn.compareAndSet(1,0)){
-//                        if (buf.outQueue.size() < OUT_MAX_QUE) {
-//                            outLockIn.incrementAndGet();
+//                    if (data != null) {
+//                        header = data.getDataHeader();
+//                        org = data.getOrg();
+//                    }
+//
+//                    CellData data1 = buf.getData(header != null ? header : org);
+//
+//
+//                    synchronized (outQueue){
+//                        if (buf.outQueue.size() < OUT_MAX_QUE)
 //                            buf.outQueue.add(data1);
-//                        }else
-//                            outLockIn.incrementAndGet();
-//                    }else
-//                        outLockIn.incrementAndGet();
+//                    }
                 }
             });
             service.shutdown();

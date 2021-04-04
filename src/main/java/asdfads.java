@@ -15,9 +15,9 @@ public class asdfads {
             Cell cell = new Cell(buf, new IWork() {
                 @Override
                 public void  deal(Org buf, List<CellData> listSpace) {
-                    for (int j = 0; j < listSpace.size(); j++) {
-                        System.out.println(listSpace.get(j).getData());
-                    }
+//                    for (int j = 0; j < listSpace.size(); j++) {
+//                        System.out.println(listSpace.get(j).getData());
+//                    }
                 }
             });
         }

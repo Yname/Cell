@@ -262,37 +262,40 @@ public class Cell implements ICell {
 //                        getCellData();
 //                    }
 
+                queueS(cellData);
+
+//                CellData d = buf.getD(cellData);
+//                if(d != null)
+//                    outSpace.add(d);
 
 
-                CellData d = buf.getD(cellData);
-                if(d != null)
-                    outSpace.add(d);
 
-                if (inSpace.size() >= lazyTime/2) {
-                    for (int i = 0; i < inSpace.size() - 1; i++) {
-                        CellData remove = inSpace.get(i);
-                        if (!remove.getOrg().equals(org)){
-                            buf.setData(remove);
-                        }
-                    }
+//                if (inSpace.size() >= lazyTime/2) {
+//                    for (int i = 0; i < inSpace.size() - 1; i++) {
+//                        CellData remove = inSpace.get(i);
+//                        if (!remove.getOrg().equals(org)){
+//                            buf.setData(remove);
+//                        }
+//                    }
+//
+//                    inSpace.clear();
+//                }
 
-                    inSpace.clear();
-                }
-
-                if (outSpace.size() >= lazyTime/5) {
-
-                    cell.iwork.deal(buf, outSpace);
-
-                    for (int i = 0; i < outSpace.size() - 1; i++) {
-//                        int j;
-                        if (outSpace.get(0) != null) {
-                            CellData remove = outSpace.remove(0);
-//                            int i1 = Integer.parseInt(remove.getDataHeader());
-                            remove.setDataHeader("100"+org+AbtractCell.random());
-                            inSpace.add(remove);
-                        }
-                    }
-                }
+//                if (outSpace.size() >= lazyTime/5) {
+//
+//                    cell.iwork.deal(buf, outSpace);
+//
+////                    for (int i = 0; i < outSpace.size() - 1; i++) {
+////////                        int j;
+////                        if (outSpace.get(0) != null) {
+////                            CellData remove = outSpace.remove(0);
+////////                            int i1 = Integer.parseInt(remove.getDataHeader());
+//////                            remove.setDataHeader("100"+org+AbtractCell.random());
+////                            inSpace.add(remove);
+////                        }
+////                    }
+//                    outSpace.clear();
+//                }
 
 
 
