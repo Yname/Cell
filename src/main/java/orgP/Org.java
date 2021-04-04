@@ -2,7 +2,6 @@ package orgP;
 
 import redis.clients.jedis.BinaryClient;
 import redis.clients.jedis.BuilderFactory;
-import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Protocol;
 
 import java.util.*;
@@ -24,6 +23,11 @@ public class Org {
     ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
     ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
     ReentrantReadWriteLock.WriteLock writeLock = readWriteLock.writeLock();
+
+
+    ReentrantReadWriteLock readWriteLockOut = new ReentrantReadWriteLock();
+    ReentrantReadWriteLock.ReadLock readLockOut = readWriteLock.readLock();
+    ReentrantReadWriteLock.WriteLock writeLockOut = readWriteLock.writeLock();
 
     final Org buf;
     int MAX_QUE = 40;
@@ -79,76 +83,79 @@ public class Org {
 //                    return 0;
 //                }
 //            }
-        synchronized (buf.inputQueue) {
-            if (inputQueue.size() >= MAX_QUE)
+
+
+//        synchronized (buf.inputQueue) {
+//            if (inputQueue.size() >= MAX_QUE)
+//                return;
+//        }
+
+        synchronized (inputQueue) {
+            if (inputQueue.size() >= MAX_QUE) {
                 return;
+            }
         }
         inputQueue.add(cellData);
+
     }
 
 
     public CellData getD(CellData cellData){
 
-            String header = null;
-            String org = null;
-            if (cellData != null) {
-                header = cellData.dataHeader;
-                org = cellData.getOrg();
+        String header = null;
+        String org = null;
+        if (cellData != null) {
+            header = cellData.dataHeader;
+            org = cellData.getOrg();
+        }
+        CellData cellData3 = null;
+        synchronized (outQueue) {
+            if (buf.outQueue.size() > 0) {
+                cellData3 = buf.outQueue.remove(0);
             }
-            CellData cellData3 = null;
-//            if (outLock.compareAndSet(1, 0)) {
-//                if (buf.outQueue.size() > 0) {
-//
-//                    cellData3 = buf.outQueue.remove(0);
-//                    System.out.println("getD==="+outQueue.size()+"=="+cellData3);
-//                    outLock.incrementAndGet();
-//                } else {
-//                    outLock.incrementAndGet();
-//                    return null;
-//                }
-//            }else {
-//                outLock.incrementAndGet();
-//                return null;
-//            }
-            synchronized (buf.outQueue) {
-                if (buf.outQueue.size() > 0) {
-                    cellData3 = buf.outQueue.remove(0);
-                }
-            }
+        }
 
-            if ( header == null && org == null ) {
+        if ( header == null && org == null ) {
 //                System.out.println("getD==="+outQueue.size()+"=="+cellData3);
-                return cellData3;
+            return cellData3;
+        }
+        else if (header != null){
+            synchronized (buf.outQueue){
+                if (buf.outQueue.size() < OUT_MAX_QUE)
+                    buf.outQueue.add(cellData3);
             }
-            else if (header != null){
-                synchronized (buf.outQueue){
-                    if (buf.outQueue.size() < OUT_MAX_QUE)
-                        buf.outQueue.add(cellData3);
-                }
-            }else {// header == null && org != null
-                synchronized (buf.outQueue){
-                    if (buf.outQueue.size() < OUT_MAX_QUE)
-                        buf.outQueue.add(cellData3);
-                }
+        }else {// header == null && org != null
+            synchronized (buf.outQueue){
+                if (buf.outQueue.size() < OUT_MAX_QUE)
+                    buf.outQueue.add(cellData3);
             }
-            return null;
+        }
+        return null;
     }
 
 
     //自定义的静态快，用来  执行每次从缓存队列里取出数据
-     private void start() {
-        for (int m = 0; m < OUT_MAX_QUE/3; m++) {
+    private void start() {
+        for (int m = 0; m < OUT_MAX_QUE/2; m++) {
             System.out.println("开始了");
             ExecutorService service = buf.getService();
             service.execute(()->{
                 Thread.currentThread().setName("thread-rw"+Thread.currentThread().getId());
                 while (true){
-                    CellData data;
+                    CellData data = null;
                     String header = null;
                     String org = null;
-                    synchronized (buf.inputQueue) {
+
+                    synchronized (inputQueue) {
                         data = buf.inputQueue.poll();
                     }
+//                    synchronized (inputQueue) {
+//                        data = buf.inputQueue.poll();
+//                    }
+
+//                    readLock.lock();
+//                    data = buf.inputQueue.poll();
+//                    readLock.unlock();
 
                     if (num.incrementAndGet() >= MAX_QUE*100000000){
                         num.compareAndSet( MAX_QUE*100000000,0);
@@ -160,16 +167,29 @@ public class Org {
                         header = data.getDataHeader();
                         org = data.getOrg();
                     }
+
                     CellData data1 = buf.getData(header != null ? header : org);
 
-                    if (outLockIn.compareAndSet(1,0)){
-                        if (buf.outQueue.size() < OUT_MAX_QUE) {
-                            outLockIn.incrementAndGet();
+
+                    synchronized (outQueue){
+                        if (buf.outQueue.size() < OUT_MAX_QUE)
                             buf.outQueue.add(data1);
-                        }else
-                            outLockIn.incrementAndGet();
-                    }else
-                        outLockIn.incrementAndGet();
+                    }
+
+//                    writeLockOut.lock();
+//                    if (buf.outQueue.size() < OUT_MAX_QUE)
+//                        buf.outQueue.add(data1);
+//                    writeLockOut.unlock();
+
+
+//                    if (outLockIn.compareAndSet(1,0)){
+//                        if (buf.outQueue.size() < OUT_MAX_QUE) {
+//                            outLockIn.incrementAndGet();
+//                            buf.outQueue.add(data1);
+//                        }else
+//                            outLockIn.incrementAndGet();
+//                    }else
+//                        outLockIn.incrementAndGet();
                 }
             });
             service.shutdown();
@@ -180,7 +200,6 @@ public class Org {
     //实际的获取数据的方法   ，原因是因为jedis的链接不是阻塞的  多线程情况会导致 连接阻塞，多命令报错
     public CellData getData(String header) {
         Map<String, String> map = null;
-        System.out.println("getData");
         if (header == null || header.equals("")) {
             map = randomHashKey();
         } else {
@@ -238,9 +257,9 @@ public class Org {
         map.put("org".getBytes(),data.getOrg().getBytes());
         map.put("data".getBytes(),data.getData().getBytes());
 
-        String key = String.valueOf(Integer.parseInt(data.getDataHeader()) | 1);
+//        String key = String.valueOf(Long.parseLong(data.getDataHeader()) | 1);
 
-        byte[] bytes = key.getBytes();
+        byte[] bytes = data.getDataHeader().getBytes();
 
         synchronized (jedis){
             jedis.exists(bytes);

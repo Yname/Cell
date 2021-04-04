@@ -10,14 +10,14 @@ public abstract class AbtractCell implements ICell{
         return yyyyMMddHHmmss + (int) (Math.random()*1000000/10);
     }
     //细胞组织结构，目前设置4种
-    public static int randomOrg(){
+    public static long randomOrg(){
         //
-        return (int) (Math.random() * 1000) / 3;
+        return (long) (Math.random() * 100);
     }
 
-
-    public static void main(String[] args) {
-        int d = (int) (Math.random()*1000000/10);
-        System.out.println(d);
+    public static long random(){
+        long a = (long) (Math.random() * 10000000);
+        long b = (long) (Math.random() * 10000000);
+        return  a | b;
     }
 }

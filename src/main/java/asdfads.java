@@ -8,18 +8,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class asdfads {
     public static void main(String[] args) {
+
+
         Org buf = Org.getBuf();
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 20; i++) {
             Cell cell = new Cell(buf, new IWork() {
                 @Override
                 public void  deal(Org buf, List<CellData> listSpace) {
-//                    for (int j = 0; j < listSpace.size(); j++) {
-//                        System.out.println(listSpace.get(j).getData());
-//                    }
+                    for (int j = 0; j < listSpace.size(); j++) {
+                        System.out.println(listSpace.get(j).getData());
+                    }
                 }
             });
         }
-
 
 //        AtomicInteger atomicInteger = new AtomicInteger(1);
 //        for (int i = 0; i < 100; i++) {
