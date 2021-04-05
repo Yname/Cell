@@ -30,7 +30,7 @@ public class Org {
 
     final Org buf;
     int MAX_QUE = 40;
-    int OUT_MAX_QUE = 5;
+    int OUT_MAX_QUE = 50;
     String orgId;
     final Queue<CellData> inputQueue = new LinkedList<>();
     final Queue<CellData> inputQueue2 = new LinkedList<>();
@@ -63,12 +63,10 @@ public class Org {
 
     //自定义缓存序列  用来存储每个线程的CellData对象，是用来临时传递值的，暂时未想到更好的解决方案
     public void queueSet(CellData cellData)  {
-
-
         rInLock.lock();
-        if (inLock.get() == 1 && inputQueue.size() <= MAX_QUE){
-            rInLock.unlock();
+        if (inLock.get() == 1 && inputQueue.size() <= MAX_QUE*5){
             inputQueue.add(cellData);
+            rInLock.unlock();
         }
         else {
             rInLock.unlock();
@@ -76,16 +74,13 @@ public class Org {
                 wInLock.lock();
                 if (inLock.get() == 1) {
                     inLock.decrementAndGet();
-                    System.out.println(inLock.get()+"=="+Thread.currentThread().getName());
                 }
                 wInLock.unlock();
             }
             if (inputQueue2.size() <= MAX_QUE && inLock.get() == 0) {
                 inputQueue2.add(cellData);
             }
-
         }
-
     }
 
 
@@ -99,14 +94,14 @@ public class Org {
         }
         CellData cellData3 = null;
 
-        synchronized (outQueue) {
-            if (buf.outQueue.size() > 0) {
-                cellData3 = buf.outQueue.remove(0);
-            }
-        }
+
+       synchronized (outQueue) {
+           if (buf.outQueue.size() > 0) {
+               cellData3 = buf.outQueue.remove(0);
+           }
+       }
 
         if ( header == null && org == null ) {
-//                System.out.println("getD==="+outQueue.size()+"=="+cellData3);
             return cellData3;
         }
         else if (header != null){
@@ -126,7 +121,7 @@ public class Org {
 
     //自定义的静态快，用来  执行每次从缓存队列里取出数据
     private void start() {
-        for (int m = 0; m < OUT_MAX_QUE/2; m++) {
+        for (int m = 0; m < OUT_MAX_QUE/10; m++) {
             System.out.println("开始了");
             ExecutorService service = buf.getService();
             service.execute(()->{
@@ -135,51 +130,52 @@ public class Org {
                     CellData data = null;
                     String header = null;
                     String org = null;
-
                     rInLock.lock();
                     if (inLock.get() == 0 && inputQueue.size() > 0) {
-                        rInLock.unlock();
-                        if (inputQueue.isEmpty())
+                        try{
+                            data = buf.inputQueue.remove();
+                        }catch (NoSuchElementException e){
                             inputQueue.clear();
-                        data = buf.inputQueue.poll();
-
+                        }
+                        rInLock.unlock();
                     }else{
                         rInLock.unlock();
                         if (inputQueue2.size() > 0 ) {
-                            if (inLock.get() == 0) {
+                            if (inLock.get() == 0 ) {
                                 wInLock.lock();
                                 if (inLock.get() == 0) {
                                     inLock.incrementAndGet();
-                                    System.out.println(Thread.currentThread().getName() + "===" + inLock.get());
                                 }
                                 wInLock.unlock();
                                 continue;
-                            } else
-                                data = buf.inputQueue2.poll();
-                        }else
+                            } else {
+                                try{
+                                    data = buf.inputQueue2.remove();
+                                }catch (NoSuchElementException e){
+                                    inputQueue2.clear();
+                                }
+                            }
+                        }else{
                             continue;
-
+                        }
                     }
 
+                    if (num.incrementAndGet() >= MAX_QUE*100000000){
+                        num.compareAndSet( MAX_QUE*100000000,0);
+                        synchronized (buf) {
+                            buf.notifyAll();
+                        }
+                    }
 
-//                    if (num.incrementAndGet() >= MAX_QUE*100000000){
-//                        num.compareAndSet( MAX_QUE*100000000,0);
-//                        synchronized (buf) {
-//                            buf.notifyAll();
-//                        }
-//                    }
-//                    if (data != null) {
-//                        header = data.getDataHeader();
-//                        org = data.getOrg();
-//                    }
-//
-//                    CellData data1 = buf.getData(header != null ? header : org);
-//
-//
-//                    synchronized (outQueue){
-//                        if (buf.outQueue.size() < OUT_MAX_QUE)
-//                            buf.outQueue.add(data1);
-//                    }
+                    if (data != null) {
+                        header = data.getDataHeader();
+                        org = data.getOrg();
+                    }
+                    CellData data1 = buf.getData(header != null ? header : org);
+
+                    if (buf.outQueue.size() < OUT_MAX_QUE)
+                        buf.outQueue.add(data1);
+
                 }
             });
             service.shutdown();
@@ -203,14 +199,11 @@ public class Org {
         }
         return new CellData(header == null ? map.get("header") : header,map.get("org"),map.get("data"));
     }
-
-
     private Map<String, String>  randomHashKey()  {
 
         byte[] hash = {104, 97, 115, 104};
         byte[] key = {};
         byte[] tempHash = {};
-
         while (!(Arrays.equals(hash, tempHash))) {
             synchronized (jedis) {
                 jedis.sendCommand(Protocol.Command.RANDOMKEY, new byte[0][]);
@@ -246,11 +239,8 @@ public class Org {
         Map<byte[],byte[]> map = new HashMap<>();
         map.put("org".getBytes(),data.getOrg().getBytes());
         map.put("data".getBytes(),data.getData().getBytes());
-
 //        String key = String.valueOf(Long.parseLong(data.getDataHeader()) | 1);
-
         byte[] bytes = data.getDataHeader().getBytes();
-
         synchronized (jedis){
             jedis.exists(bytes);
             Long integerReply = jedis.getIntegerReply();

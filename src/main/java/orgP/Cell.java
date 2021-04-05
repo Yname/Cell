@@ -15,7 +15,7 @@ public class Cell implements ICell {
     boolean mark = false;
     IWork iwork;
     Org buf = null;
-    CellData cellData = null;
+    CellData cellData =null;
     int lazyTime = 50;
     Work work;
     static ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
@@ -264,9 +264,9 @@ public class Cell implements ICell {
 
                 queueS(cellData);
 
-//                CellData d = buf.getD(cellData);
-//                if(d != null)
-//                    outSpace.add(d);
+                CellData d = buf.getD(cellData);
+                if(d != null)
+                    outSpace.add(d);
 
 
 
@@ -281,9 +281,9 @@ public class Cell implements ICell {
 //                    inSpace.clear();
 //                }
 
-//                if (outSpace.size() >= lazyTime/5) {
-//
-//                    cell.iwork.deal(buf, outSpace);
+                if (outSpace.size() >= lazyTime/5) {
+////
+                    cell.iwork.deal(buf, outSpace);
 //
 ////                    for (int i = 0; i < outSpace.size() - 1; i++) {
 ////////                        int j;
@@ -294,8 +294,8 @@ public class Cell implements ICell {
 ////                            inSpace.add(remove);
 ////                        }
 ////                    }
-//                    outSpace.clear();
-//                }
+                    outSpace.clear();
+                }
 
 
 

@@ -16,7 +16,8 @@ public class asdfads {
                 @Override
                 public void  deal(Org buf, List<CellData> listSpace) {
 //                    for (int j = 0; j < listSpace.size(); j++) {
-//                        System.out.println(listSpace.get(j).getData());
+//                        if (listSpace.get(j) != null)
+//                            System.out.println(listSpace.get(j).getData());
 //                    }
                 }
             });
